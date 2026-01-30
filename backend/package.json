@@ -1,0 +1,25 @@
+{
+  "name": "smart-scribe-backend",
+  "version": "1.0.0",
+  "description": "Backend core for Smart Scribe AI Notepad application",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "electron",
+    "ai",
+    "notepad",
+    "encryption",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^9.0.0",
+    "crypto-js": "^4.2.0",
+    "keytar": "^7.9.0",
+    "node-llama-cpp": "^2.0.0"
+  },
+  "devDependencies": {}
+}
