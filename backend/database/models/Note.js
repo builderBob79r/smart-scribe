@@ -28,12 +28,17 @@ function createNote(noteData, encryptionKey) {
   const db = getDatabase();
 
   try {
-    // Encrypt title and content
-    const encryptedTitle = encryptContent(noteData.title, encryptionKey);
-    const encryptedContent = encryptContent(noteData.content, encryptionKey);
-
     const now = new Date().toISOString();
     const tags = noteData.tags ? JSON.stringify(noteData.tags) : null;
+
+    // Combine title and content as JSON to avoid separator issues
+    const notePayload = JSON.stringify({
+      title: noteData.title,
+      content: noteData.content
+    });
+
+    // Encrypt the combined payload
+    const encrypted = encryptContent(notePayload, encryptionKey);
 
     // Insert note into database
     const stmt = db.prepare(`
@@ -41,16 +46,13 @@ function createNote(noteData, encryptionKey) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    // Store title's encrypted data along with content's encrypted data
-    // For simplicity, we'll use content's IV and authTag for the entire record
-    // In production, you might want separate fields for title encryption
-    const titleEncrypted = encryptContent(noteData.title + '|||' + noteData.content, encryptionKey);
-
+    // Store empty string as title placeholder (actual title is in encrypted content)
+    // This maintains backward compatibility with the schema
     const result = stmt.run(
-      titleEncrypted.content.substring(0, Math.min(titleEncrypted.content.length / 2, 1000)), // Store partial encrypted data as title
-      titleEncrypted.content,
-      titleEncrypted.iv,
-      titleEncrypted.authTag,
+      '', // Placeholder for title field
+      encrypted.content,
+      encrypted.iv,
+      encrypted.authTag,
       now,
       now,
       tags,
@@ -131,6 +133,18 @@ function getAllNotes(options = {}, encryptionKey) {
     const orderBy = options.orderBy || 'updatedAt';
     const order = options.order || 'DESC';
 
+    // Validate orderBy to prevent SQL injection
+    const allowedOrderByFields = ['id', 'createdAt', 'updatedAt', 'isFavorite', 'isArchived'];
+    if (!allowedOrderByFields.includes(orderBy)) {
+      throw new Error(`Invalid orderBy field: ${orderBy}. Allowed fields are: ${allowedOrderByFields.join(', ')}`);
+    }
+
+    // Validate order direction
+    const allowedOrders = ['ASC', 'DESC'];
+    if (!allowedOrders.includes(order.toUpperCase())) {
+      throw new Error(`Invalid order direction: ${order}. Allowed values are: ASC, DESC`);
+    }
+
     let sql = 'SELECT * FROM notes WHERE 1=1';
     const params = [];
 
@@ -142,7 +156,7 @@ function getAllNotes(options = {}, encryptionKey) {
       sql += ' AND isFavorite = 1';
     }
 
-    sql += ` ORDER BY ${orderBy} ${order}`;
+    sql += ` ORDER BY ${orderBy} ${order.toUpperCase()}`;
 
     const stmt = db.prepare(sql);
     const rows = stmt.all(...params);
@@ -205,11 +219,15 @@ function updateNote(noteId, updates, encryptionKey) {
       const newTitle = updates.title !== undefined ? updates.title : existingNote.title;
       const newContent = updates.content !== undefined ? updates.content : existingNote.content;
 
-      const combined = newTitle + '|||' + newContent;
-      const encrypted = encryptContent(combined, encryptionKey);
+      // Use JSON serialization for safe storage
+      const notePayload = JSON.stringify({
+        title: newTitle,
+        content: newContent
+      });
+      const encrypted = encryptContent(notePayload, encryptionKey);
 
       fields.push('title = ?');
-      values.push(encrypted.content.substring(0, Math.min(encrypted.content.length / 2, 1000)));
+      values.push(''); // Placeholder
       
       fields.push('content = ?');
       values.push(encrypted.content);
@@ -323,14 +341,14 @@ function searchNotes(query, encryptionKey) {
  */
 function decryptNote(row, encryptionKey) {
   try {
-    // Decrypt the combined title|||content
+    // Decrypt the JSON payload
     const decrypted = decryptContent(row.content, encryptionKey, row.iv, row.authTag);
-    const [title, content] = decrypted.split('|||');
+    const payload = JSON.parse(decrypted);
 
     return {
       id: row.id,
-      title: title || '',
-      content: content || '',
+      title: payload.title || '',
+      content: payload.content || '',
       tags: row.tags ? JSON.parse(row.tags) : [],
       isFavorite: row.isFavorite === 1,
       isArchived: row.isArchived === 1,

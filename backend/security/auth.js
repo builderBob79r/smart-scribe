@@ -14,6 +14,56 @@ const AUTH_FILE = path.join(process.cwd(), 'data', 'auth.json');
 const PASSWORD_HASH_ACCOUNT = 'master-password-hash';
 const PASSWORD_SALT_ACCOUNT = 'master-password-salt';
 
+// Rate limiting for brute force protection
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+let failedAttempts = 0;
+let lockoutUntil = null;
+
+/**
+ * Check if account is locked due to failed attempts
+ * @returns {Object} Lock status
+ */
+function checkLockoutStatus() {
+  if (lockoutUntil && Date.now() < lockoutUntil) {
+    const remainingMs = lockoutUntil - Date.now();
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    return {
+      locked: true,
+      remainingSeconds: remainingSeconds
+    };
+  }
+  
+  // Reset if lockout period has passed
+  if (lockoutUntil && Date.now() >= lockoutUntil) {
+    failedAttempts = 0;
+    lockoutUntil = null;
+  }
+  
+  return { locked: false };
+}
+
+/**
+ * Record a failed authentication attempt
+ */
+function recordFailedAttempt() {
+  failedAttempts++;
+  console.warn(`Failed authentication attempt ${failedAttempts}/${MAX_FAILED_ATTEMPTS}`);
+  
+  if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+    lockoutUntil = Date.now() + LOCKOUT_DURATION_MS;
+    console.error(`Account locked due to too many failed attempts. Locked until ${new Date(lockoutUntil).toISOString()}`);
+  }
+}
+
+/**
+ * Reset failed attempts counter (call after successful authentication)
+ */
+function resetFailedAttempts() {
+  failedAttempts = 0;
+  lockoutUntil = null;
+}
+
 /**
  * Ensure data directory exists
  */
@@ -113,11 +163,22 @@ async function verifyMasterPassword(password) {
     throw new Error('Password is required');
   }
 
+  // Check if account is locked
+  const lockStatus = checkLockoutStatus();
+  if (lockStatus.locked) {
+    return {
+      success: false,
+      locked: true,
+      message: `Account locked. Try again in ${lockStatus.remainingSeconds} seconds.`,
+      remainingSeconds: lockStatus.remainingSeconds
+    };
+  }
+
   try {
     // Load auth data
     const authData = await loadAuthData();
     if (!authData || !authData.initialized) {
-      throw new Error('Password not set up. Please set up a password first.');
+      throw new Error('Authentication not configured');
     }
 
     // Retrieve stored hash and salt from keychain
@@ -125,18 +186,23 @@ async function verifyMasterPassword(password) {
     const storedSalt = await retrieveKey(PASSWORD_SALT_ACCOUNT);
 
     if (!storedHash || !storedSalt) {
-      throw new Error('Password credentials not found. Please set up password again.');
+      throw new Error('Authentication credentials not found');
     }
 
     // Verify password
     const isValid = await verifyPassword(password, storedHash, storedSalt);
 
     if (!isValid) {
+      recordFailedAttempt();
       return {
         success: false,
-        message: 'Invalid password'
+        message: 'Authentication failed',
+        attemptsRemaining: Math.max(0, MAX_FAILED_ATTEMPTS - failedAttempts)
       };
     }
+
+    // Reset failed attempts on successful authentication
+    resetFailedAttempts();
 
     // Retrieve encryption key
     const encryptionKey = await retrieveKey('encryption-key');
@@ -232,6 +298,9 @@ async function resetAuthentication() {
       }
     }
 
+    // Reset rate limiting
+    resetFailedAttempts();
+
     console.log('Authentication reset successfully');
     return true;
   } catch (error) {
@@ -245,5 +314,9 @@ module.exports = {
   verifyMasterPassword,
   changePassword,
   isPasswordSetup,
-  resetAuthentication
+  resetAuthentication,
+  checkLockoutStatus,
+  resetFailedAttempts,
+  MAX_FAILED_ATTEMPTS,
+  LOCKOUT_DURATION_MS
 };
