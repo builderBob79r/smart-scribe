@@ -87,7 +87,7 @@ Using git commands:
 ```bash
 git checkout main
 git pull origin main
-git merge --no-ff feature/your-feature-name
+git merge --no-ff <your-branch-name>  # Replace with actual branch name
 git push origin main
 ```
 
@@ -124,7 +124,7 @@ tests/            # (Future) Test files
 
 ### Prerequisites
 
-- Node.js 16+ 
+- Node.js 18+ or 20+ (LTS versions recommended)
 - npm or yarn
 - SQLite3
 

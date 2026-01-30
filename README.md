@@ -29,7 +29,7 @@ Smart Scribe is a privacy-focused notepad application that uses local AI to help
 ```
 backend/
 ├── ai/
-│   ├── modelLoader.js    # LLM initialization (LFM2-350M-Q6_K.gguf)
+│   ├── modelLoader.js    # LLM initialization (LLAMA model)
 │   ├── inference.js      # AI text processing
 │   └── prompts.js        # Style templates
 ├── database/
@@ -57,7 +57,7 @@ Smart Scribe takes your privacy seriously:
 
 ### Prerequisites
 
-- Node.js 16 or higher
+- Node.js 18+ or 20+ (LTS versions recommended)
 - npm or yarn
 
 ### Installation
@@ -90,7 +90,7 @@ Current PR: See [open pull requests](https://github.com/builderBob79r/smart-scri
 
 ## License
 
-[License information to be added]
+To be determined - see [issue](https://github.com/builderBob79r/smart-scribe/issues) for discussion.
 
 ## Acknowledgments
 
